@@ -18,15 +18,15 @@
 #include <gnuradio/io_signature.h>
 
 #include <iostream>
-#include <itpp/itcomm.h>
+#include <fec/cc_decoder.h>
 
 using namespace gr::ieee802_11;
-using namespace itpp;
 
 
 class ofdm_decode_signal_impl : public ofdm_decode_signal {
 
 #define dout d_debug && std::cout
+boost::shared_ptr<cc_decoder> dec;
 
 public:
 ofdm_decode_signal_impl(bool debug) : block("ofdm_decode_signal",
@@ -35,9 +35,9 @@ ofdm_decode_signal_impl(bool debug) : block("ofdm_decode_signal",
 			d_debug(debug),
 			d_copy_symbols(0) {
 
-	decoded_bits.set_size(24);
 	set_relative_rate(1);
 	set_tag_propagation_policy(block::TPP_DONT);
+
 }
 
 ~ofdm_decode_signal_impl(){
@@ -72,6 +72,7 @@ int general_work (int noutput_items, gr_vector_int& ninput_items,
 			deinterleave();
 
 			decode();
+
 
 			if(print_signal()) {
 
@@ -117,23 +118,15 @@ void deinterleave() {
 }
 
 void decode() {
-
-	Convolutional_Code code;
-	ivec generator(2);
-	generator(0)=0133;
-	generator(1)=0171;
-	code.set_generator_polynomials(generator, 7);
-	code.set_truncation_length(30);
-
-	vec rx_signal(bits, 48);
-	code.reset();
-	code.decode_tail(rx_signal, decoded_bits);
-
-	dout << "length rx " << rx_signal.size() << std::endl;
-	dout << rx_signal << std::endl;
-	dout << "length decoded " << decoded_bits.size() << std::endl;
-	dout << decoded_bits << std::endl;
-
+    std::vector<int> polys;
+    polys.push_back(109);
+    polys.push_back(79);
+    dec = boost::shared_ptr<cc_decoder>(
+        new cc_decoder(48, 7, 2, polys, 0x00, 0x00, false, false, true, false));
+    for(int i=0; i<48; i++){
+        bits_uchar[i] = (bits[i]*(-1000))+128;
+    }
+    dec->generic_work(bits_uchar, &decoded_bits2[0]);
 }
 
 bool print_signal() {
@@ -142,18 +135,18 @@ bool print_signal() {
 	d_len = 0;
 	bool parity = false;
 	for(int i = 0; i < 17; i++) {
-		parity ^= decoded_bits[i];
+		parity ^= decoded_bits2[i];
 
-		if((i < 4) && decoded_bits[i]) {
+		if((i < 4) && decoded_bits2[i]) {
 			r = r | (1 << i);
 		}
 
-		if(decoded_bits[i] && (i > 4) && (i < 17)) {
+		if(decoded_bits2[i] && (i > 4) && (i < 17)) {
 			d_len = d_len | (1 << (i-5));
 		}
 	}
 
-	if(parity != (bool)decoded_bits[17]) {
+	if(parity != (bool)decoded_bits2[17]) {
 		dout << "SIGNAL: wrong parity" << std::endl;
 		return false;
 	}
@@ -205,8 +198,9 @@ private:
 	int    d_encoding;
 	bool   d_debug;
 	double bits[48];
+	uint8_t bits_uchar[48];
 	int    d_copy_symbols;
-	bvec decoded_bits;
+    uint8_t decoded_bits2[1024];
 	static int inter[48];
 };
 

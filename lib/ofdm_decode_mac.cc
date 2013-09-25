@@ -20,12 +20,11 @@
 
 #include <boost/crc.hpp>
 #include <gnuradio/io_signature.h>
-#include <itpp/itcomm.h>
 #include <iostream>
 #include <iomanip>
+#include <fec/cc_decoder.h>
 
 using namespace gr::ieee802_11;
-using namespace itpp;
 
 class ofdm_decode_mac_impl : public ofdm_decode_mac {
 
@@ -37,8 +36,8 @@ ofdm_decode_mac_impl(bool debug) : block("ofdm_decode_mac",
 			gr::io_signature::make(0, 0, 0)),
 			d_debug(debug),
 			ofdm(BPSK_1_2),
-			tx(ofdm, 0) {
-
+			tx(ofdm, 0)
+{
 	message_port_register_out(pmt::mp("out"));
 }
 
@@ -183,13 +182,12 @@ void deinterleave() {
 }
 
 void decode_conv() {
-	Punctured_Convolutional_Code code;
-	ivec generator(2);
-	generator(0)=0133;
-	generator(1)=0171;
-	code.set_generator_polynomials(generator, 7);
 
-	bmat puncture_matrix;
+
+    // TODO: perform correct de-puncturing for code rate
+    //   currently only works for 1/2 rate
+   //printf("ofdm.encoding = %d\n", ofdm.encoding);
+/*
 	switch(ofdm.encoding) {
 	case 0:
 	case 2:
@@ -211,23 +209,38 @@ void decode_conv() {
 	code.set_truncation_length(30);
 
 	dout << "coding rate " << code.get_rate() << std::endl;
-	dout << tx.n_encoded_bits << std::endl;
+	dout << "n_encoded_bits: " << tx.n_encoded_bits << std::endl;
+*/
 
-	vec rx_signal(deinter, tx.n_encoded_bits);
+    // TODO: perform depuncturing ....
+    // switch(ofdm.encoding){
+    // defaults to [1 1; 1 1] for now {none}
 
-	code.reset();
-	decoded_bits.set_length(tx.n_encoded_bits);
-	code.decode_tail(rx_signal, decoded_bits);
+    int bits_in = tx.n_encoded_bits;
+    ndecoded_bits_len = bits_in/2-6;
 
-	//dout << "length decoded " << decoded_bits.size() << std::endl;
-	//std::cout << decoded_bits << std::endl;
-	//
+    std::vector<int> polys;
+    polys.push_back(109);
+    polys.push_back(79);
+
+    dec = boost::shared_ptr<cc_decoder>(
+        new cc_decoder(bits_in, 7, 2, polys, 0x00, 0x00, false, false, true, false));
+
+    // convert the input scaling - float to uint8
+    // rx_signal in range [ -0.5  0.5 ] ?
+    for(int i=0; i<bits_in; i++){
+        //ncoded_bits[i] = (rx_signal[i]*(-1000))+128;
+        ncoded_bits[i] = (deinter[i]*(-1000))+128;
+        ndecoded_bits[i] = 0;
+        }
+
+    dec->generic_work(ncoded_bits, ndecoded_bits);
 }
 
 void descramble () {
 	int index = 0;
 	for(int i = 0; i < 7; i++) {
-		if(decoded_bits(i)) {
+		if(ndecoded_bits[i] == 1) {
 			index |= 1 << (6 - i);
 		}
 	}
@@ -235,13 +248,13 @@ void descramble () {
 
 	int feedback;
 
-	for(int i = 0; i < decoded_bits.size(); i++) {
+	for(int i = 0; i < ndecoded_bits_len; i++) {
 		feedback = ((!!(state & 64))) ^ (!!(state & 8));
-		out_bits[i] = feedback ^ decoded_bits(i);
+		out_bits[i] = feedback ^ ((int)ndecoded_bits[i]);
 		state = ((state << 1) & 0x7e) | feedback;
 	}
 
-	for(int i = 0; i < decoded_bits.size(); i++) {
+	for(int i = 0; i < ndecoded_bits_len; i++) {
 		int bit = i % 8;
 		int byte = i / 8;
 		if(bit == 0) {
@@ -257,14 +270,14 @@ void descramble () {
 void print_output() {
 
 	dout << std::endl;
-	for(int i = 0; i < decoded_bits.size() / 8; i++) {
+	for(int i = 0; i < ndecoded_bits_len / 8; i++) {
 		dout << std::setfill('0') << std::setw(2) << std::hex << ((unsigned int)out_bytes[i] & 0xFF) << std::dec << " ";
 		if(i % 16 == 15) {
 			dout << std::endl;
 		}
 	}
 	dout << std::endl;
-	for(int i = 0; i < decoded_bits.size() / 8; i++) {
+	for(int i = 0; i < ndecoded_bits_len / 8; i++) {
 		if((out_bytes[i] > 31) && (out_bytes[i] < 127)) {
 			dout << ((char) out_bytes[i]);
 		} else {
@@ -278,14 +291,20 @@ private:
 	gr_complex sym[1000 * 48 * 100];
 	double bits[1000 * 48];
 	double deinter[1000 * 48];
+
+    uint8_t ncoded_bits[1000 * 48];
+    uint8_t ndecoded_bits[1000 * 48];
+    int ndecoded_bits_len;
+
 	char out_bits[40000];
 	char out_bytes[40000];
-        bvec decoded_bits;
 	bool   d_debug;
+
 	tx_param tx;
 	ofdm_param ofdm;
 	int copied;
 	static int scrambler_init[128];
+    boost::shared_ptr<cc_decoder> dec;
 };
 
 ofdm_decode_mac::sptr

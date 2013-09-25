@@ -80,8 +80,10 @@ set(GRC_BLOCKS_DIR      ${GR_PKG_DATA_DIR}/grc/blocks)
 ########################################################################
 # Find gnuradio build dependencies
 ########################################################################
-find_package(GnuradioRuntime)
+set(GR_REQUIRED_COMPONENTS RUNTIME FILTER FFT)
+find_package(Gnuradio)
 find_package(CppUnit)
+find_package(fec)
 
 if(NOT GNURADIO_RUNTIME_FOUND)
     message(FATAL_ERROR "GnuRadio Runtime required to compile ieee802-11")
@@ -96,6 +98,8 @@ endif()
 ########################################################################
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
+    ${FECAPI_INCLUDE_DIRS}
+    ${FECAPI_INCLUDE_DIRS}/fec
     ${Boost_INCLUDE_DIRS}
     ${CPPUNIT_INCLUDE_DIRS}
     ${GNURADIO_RUNTIME_INCLUDE_DIRS}

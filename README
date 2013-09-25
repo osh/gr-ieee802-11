@@ -4,12 +4,11 @@ this code is already ported to GNU Radio v3.7. This version of GNU Radio is not 
 
 DEPENDENCIES
 ============
-IT++ (Version: 4.2-4)
+FECAPI (github next branch)
 GNU Radio (v3.7 with UHD support)
 
 INSTALLATION
 ============
-sudo apt-get install libitpp-dev
 git clone git://github.com/bastibl/gr-ieee802-11.git
 cd gr-ieee802-11
 mkdir build
@@ -26,7 +25,7 @@ Open examples/rx.grc.
 CONTRIBUTORS
 ============
 Bastian Bloessl
-Tim O'Shea (port to GNU Radio v3.7)
+Tim O'Shea (port to GNU Radio v3.7, fecapization, itpp removal)
 
 FURTHER INFORMATION
 ===================
